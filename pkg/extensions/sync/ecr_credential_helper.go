@@ -18,24 +18,22 @@ import (
 
 // ECR tokens are valid for 12 hours. The ExpiryWindow variable is set to 1 hour,
 // meaning if the remaining validity of the token is less than 1 hour, it will be considered expired.
-const ExpiryWindow int = 1 
-type ECRCredential struct { 
+const ExpiryWindow int = 1
+
+type ECRCredential struct {
 	username string
 	password string
-	expiry time.Time
-	account string
-	region string
+	expiry   time.Time
+	account  string
+	region   string
 }
-
 
 type ECRCredentialsHelper struct {
 	credentials map[string]ECRCredential
 	log         log.Logger
 }
 
-func NewECRCredentialHelper(
-	log log.Logger
-) CredentialHelper {
+func NewECRCredentialHelper(log log.Logger) CredentialHelper {
 	return &ECRCredentialsHelper{
 		credentials: make(map[string]ECRCredential),
 		log:         log,
@@ -97,15 +95,16 @@ func GetECRCredentials(url string) (ECRCredential, err) {
 	username := tokenParts[0]
 	password := tokenParts[1]
 
-	return ECRCredential{username:username,password:password,expiry:expiry, account: accountID, region: region}, nil 
+	return ECRCredential{username: username, password: password, expiry: expiry, account: accountID, region: region}, nil
 
 }
+
 // GetECRCredentials retrieves the ECR credentials (username and password) from AWS ECR
-func (credHelper *ECRCredentialsHelper)getCredentials(urls []string) (syncconf.CredentialsFile, error) {
+func (credHelper *ECRCredentialsHelper) getCredentials(urls []string) (syncconf.CredentialsFile, error) {
 	var ecrCredentials syncconf.CredentialsFile
 
 	for _, url := range urls {
-		ecrCred,err : = GetECRCredentials(url)
+		ecrCred, err := GetECRCredentials(url)
 		if err != nil {
 			return syncconf.CredentialsFile{}, fmt.Errorf("failed to get ECR credentials for URL %s: %w", url, err)
 		}
@@ -114,34 +113,30 @@ func (credHelper *ECRCredentialsHelper)getCredentials(urls []string) (syncconf.C
 			Username: ecrCred.username,
 			Password: ecrCred.password,
 		}
-		credHelper.credentials[url]=ecrCred
+		credHelper.credentials[url] = ecrCred
 	}
 
 	return ecrCredentials, nil
 }
 
-
-func (credHelper *ECRCredentialsHelper)isCredentialsValid(url string) bool {
-	expiry: = credHelper.credentials[url].expiry 
-	if time.Until(expiry) <= ExpiryWindow*time.Hour {
-        credHelper.log.Info().
-    	Str("url", url).
-    	Msg("The credentials are close to expiring")
-        return false
-    } else {
-        credHelper.log.Debug().
-    	Str("url", url).
-    	Msg("The credentials are close to expiring")
-		return true
-    }
+func (credHelper *ECRCredentialsHelper) isCredentialsValid(url string) bool {
+	expiry := credHelper.credentials[url].expiry
+	/*
+		if time.Until(expiry) <= ExpiryWindow*time.Hour {
+			credHelper.log.Info().Str("url", url).Msg("The credentials are close to expiring")
+			return false
+		}
+	*/
+	credHelper.log.Debug().Str("url", url).Msg("The credentials are valid")
+	return true
 }
 
-func (credHelper *ECRCredentialsHelper) refreshCredentials(url) (syncconf.Credentials, err) { 
+func (credHelper *ECRCredentialsHelper) refreshCredentials(url) (syncconf.Credentials, err) {
 
-	ecrCred,err : = GetECRCredentials(url)
+	ecrCred, err := GetECRCredentials(url)
 	if err != nil {
 		return syncconf.Credentials{}, fmt.Errorf("failed to get ECR credentials for URL %s: %w", url, err)
 	}
-	return Credentails{username:ecrCred.username,ecrCred.password}, nil
+	return Credentails{username: ecrCred.username, ecrCred.password}, nil
 
 }
