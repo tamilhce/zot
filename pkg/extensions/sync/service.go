@@ -27,20 +27,20 @@ import (
 )
 
 type BaseService struct {
-	config          syncconf.RegistryConfig
-	credentials     syncconf.Credentials
+	config           syncconf.RegistryConfig
+	credentials      syncconf.Credentials
 	credentialHelper CredentialHelper
-	clusterConfig   *config.ClusterConfig
-	remote          Remote
-	destination     Destination
-	retryOptions    *retry.RetryOptions
-	contentManager  ContentManager
-	storeController storage.StoreController
-	metaDB          mTypes.MetaDB
-	repositories    []string
-	references      references.References
-	client          *client.Client
-	log             log.Logger
+	clusterConfig    *config.ClusterConfig
+	remote           Remote
+	destination      Destination
+	retryOptions     *retry.RetryOptions
+	contentManager   ContentManager
+	storeController  storage.StoreController
+	metaDB           mTypes.MetaDB
+	repositories     []string
+	references       references.References
+	client           *client.Client
+	log              log.Logger
 }
 
 func New(
@@ -72,7 +72,7 @@ func New(
 					Err(err).Msg("couldn't get registry credentials from configured path")
 			}
 			service.credentialHelper = nil
-			service.credentials = credentialsFile
+			service.credentialsFile = credentialsFile
 		}
 	} else {
 		log.Info().Msgf("Using credentials helper, because CredentialHelper is set to %s", service.config.CredentialHelper)
@@ -123,7 +123,6 @@ func New(
 
 	service.retryOptions = retryOptions
 	service.storeController = storeController
-    if service.config.CredentialHelper
 	// try to set next client.
 	if err := service.SetNextAvailableClient(); err != nil {
 		// if it's a ping issue, it will be retried
@@ -161,16 +160,16 @@ func (service *BaseService) SetNextAvailableClient() error {
 		}
 
 		remoteAddress := StripRegistryTransport(url)
-        // If a CredentialHelper is configured, refresh the credentials if they have expired.
+		// If a CredentialHelper is configured, refresh the credentials if they have expired.
 		// Otherwise, use the existing credentials for the given remote address.
 		var credentials syncconf.Credentials
 
-		if service.config.CredentialHelper { 
-			if not service.credentialHelper.isCredentialsValid(url) { 
-				 credentails := service.credentialHelper.refreshCredentials(url)
+		if service.config.CredentialHelper {
+			if !service.credentialHelper.isCredentialsValid(url) {
+				credentials := service.credentialHelper.refreshCredentials(url)
 			}
-		}else { 
-		credentials := service.credentials[remoteAddress]
+		} else {
+			credentials := service.credentials[remoteAddress]
 		}
 
 		tlsVerify := true

@@ -54,17 +54,17 @@ func extractAccountAndRegion(url string) (string, string, error) {
 	return accountID, region, nil
 }
 
-func GetECRCredentials(url string) (ECRCredential, err) {
+func GetECRCredentials(url string) (ECRCredential, error) {
 	// Extract account ID and region from the URL
 	accountID, region, err := extractAccountAndRegion(StripRegistryTransport(url))
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract account and region from URL %s: %w", url, err)
+		return ECRCredential{}, fmt.Errorf("failed to extract account and region from URL %s: %w", url, err)
 	}
 
 	// Load the AWS config for the specific region
 	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
 	if err != nil {
-		return nil, fmt.Errorf("unable to load AWS config for region %s: %w", region, err)
+		return ECRCredential{}, fmt.Errorf("unable to load AWS config for region %s: %w", region, err)
 	}
 
 	// Create an ECR client
@@ -75,20 +75,20 @@ func GetECRCredentials(url string) (ECRCredential, err) {
 		RegistryIds: []string{accountID}, // Filter by the account ID
 	})
 	if err != nil {
-		return nil, fmt.Errorf("unable to get ECR authorization token for account %s: %w", accountID, err)
+		return ECRCredential{}, fmt.Errorf("unable to get ECR authorization token for account %s: %w", accountID, err)
 	}
 
 	// Decode the base64-encoded ECR token
 	authToken := *ecrAuth.AuthorizationData[0].AuthorizationToken
 	decodedToken, err := base64.StdEncoding.DecodeString(authToken)
 	if err != nil {
-		return nil, fmt.Errorf("unable to decode ECR token: %w", err)
+		return ECRCredential{}, fmt.Errorf("unable to decode ECR token: %w", err)
 	}
 
 	// Split the decoded token into username and password (username is "AWS")
 	tokenParts := strings.Split(string(decodedToken), ":")
 	if len(tokenParts) != 2 {
-		return nil, fmt.Errorf("invalid token format received from ECR")
+		return ECRCredential{}, fmt.Errorf("invalid token format received from ECR")
 	}
 
 	expiry := *ecrAuth.AuthorizationData[0].ExpiresAt
@@ -121,22 +121,22 @@ func (credHelper *ECRCredentialsHelper) getCredentials(urls []string) (syncconf.
 
 func (credHelper *ECRCredentialsHelper) isCredentialsValid(url string) bool {
 	expiry := credHelper.credentials[url].expiry
-	/*
-		if time.Until(expiry) <= ExpiryWindow*time.Hour {
-			credHelper.log.Info().Str("url", url).Msg("The credentials are close to expiring")
-			return false
-		}
-	*/
+	expiryDuration := time.Duration(ExpiryWindow) * time.Hour
+	if time.Until(expiry) <= expiryDuration {
+		credHelper.log.Info().Str("url", url).Msg("The credentials are close to expiring")
+		return false
+	}
+
 	credHelper.log.Debug().Str("url", url).Msg("The credentials are valid")
 	return true
 }
 
-func (credHelper *ECRCredentialsHelper) refreshCredentials(url) (syncconf.Credentials, err) {
+func (credHelper *ECRCredentialsHelper) refreshCredentials(url string) (syncconf.Credentials, error) {
 
 	ecrCred, err := GetECRCredentials(url)
 	if err != nil {
 		return syncconf.Credentials{}, fmt.Errorf("failed to get ECR credentials for URL %s: %w", url, err)
 	}
-	return Credentails{username: ecrCred.username, ecrCred.password}, nil
+	return syncconf.Credentials{Username: ecrCred.username, Password: ecrCred.password}, nil
 
 }
