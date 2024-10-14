@@ -54,11 +54,11 @@ func extractAccountAndRegion(url string) (string, string, error) {
 	return accountID, region, nil
 }
 
-func GetECRCredentials(url string) (ECRCredential, error) {
+func GetECRCredentials(remoteAddress string) (ECRCredential, error) {
 	// Extract account ID and region from the URL
-	accountID, region, err := extractAccountAndRegion(StripRegistryTransport(url))
+	accountID, region, err := extractAccountAndRegion(remoteAddress)
 	if err != nil {
-		return ECRCredential{}, fmt.Errorf("failed to extract account and region from URL %s: %w", url, err)
+		return ECRCredential{}, fmt.Errorf("failed to extract account and region from URL %s: %w", remoteAddress, err)
 	}
 
 	// Load the AWS config for the specific region
@@ -101,41 +101,41 @@ func GetECRCredentials(url string) (ECRCredential, error) {
 
 // GetECRCredentials retrieves the ECR credentials (username and password) from AWS ECR
 func (credHelper *ECRCredentialsHelper) getCredentials(urls []string) (syncconf.CredentialsFile, error) {
-	var ecrCredentials syncconf.CredentialsFile
+	ecrCredentials := make(syncconf.CredentialsFile)
 
 	for _, url := range urls {
-		ecrCred, err := GetECRCredentials(url)
+		remoteAddress := StripRegistryTransport(url)
+		ecrCred, err := GetECRCredentials(remoteAddress)
 		if err != nil {
 			return syncconf.CredentialsFile{}, fmt.Errorf("failed to get ECR credentials for URL %s: %w", url, err)
 		}
 		// Store the credentials in the map using the base URL as the key
-		ecrCredentials[url] = syncconf.Credentials{
+		ecrCredentials[remoteAddress] = syncconf.Credentials{
 			Username: ecrCred.username,
 			Password: ecrCred.password,
 		}
-		credHelper.credentials[url] = ecrCred
+		credHelper.credentials[remoteAddress] = ecrCred
 	}
-
 	return ecrCredentials, nil
 }
 
-func (credHelper *ECRCredentialsHelper) isCredentialsValid(url string) bool {
-	expiry := credHelper.credentials[url].expiry
+func (credHelper *ECRCredentialsHelper) isCredentialsValid(remoteAddress string) bool {
+	expiry := credHelper.credentials[remoteAddress].expiry
 	expiryDuration := time.Duration(ExpiryWindow) * time.Hour
 	if time.Until(expiry) <= expiryDuration {
-		credHelper.log.Info().Str("url", url).Msg("The credentials are close to expiring")
+		credHelper.log.Info().Str("url", remoteAddress).Msg("The credentials are close to expiring")
 		return false
 	}
 
-	credHelper.log.Debug().Str("url", url).Msg("The credentials are valid")
+	credHelper.log.Info().Str("url", remoteAddress).Msg("The credentials are valid")
 	return true
 }
 
-func (credHelper *ECRCredentialsHelper) refreshCredentials(url string) (syncconf.Credentials, error) {
-
-	ecrCred, err := GetECRCredentials(url)
+func (credHelper *ECRCredentialsHelper) refreshCredentials(remoteAddress string) (syncconf.Credentials, error) {
+	credHelper.log.Info().Str("url", remoteAddress).Msg("Refreshing the ECR credentials")
+	ecrCred, err := GetECRCredentials(remoteAddress)
 	if err != nil {
-		return syncconf.Credentials{}, fmt.Errorf("failed to get ECR credentials for URL %s: %w", url, err)
+		return syncconf.Credentials{}, fmt.Errorf("failed to get ECR credentials for URL %s: %w", remoteAddress, err)
 	}
 	return syncconf.Credentials{Username: ecrCred.username, Password: ecrCred.password}, nil
 

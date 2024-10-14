@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"testing"
+	"time"
 
 	dockerManifest "github.com/containers/image/v5/manifest"
 	"github.com/containers/image/v5/oci/layout"
@@ -674,5 +675,53 @@ func TestConvertDockerLayersToOCI(t *testing.T) {
 		So(dockerLayers[1].MediaType, ShouldEqual, ispec.MediaTypeImageLayerNonDistributableGzip) //nolint: staticcheck
 		So(dockerLayers[2].MediaType, ShouldEqual, ispec.MediaTypeImageLayer)
 		So(dockerLayers[3].MediaType, ShouldEqual, ispec.MediaTypeImageLayerGzip)
+	})
+}
+
+func TestECRCredentialsHelper(t *testing.T) {
+	Convey("Test Mock ECR Credentials Helper", t, func() {
+		mockHelper := mocks.NewMockECRCredentialsHelper()
+
+		Convey("Test Valid Credentials Retrieval", func() {
+			url := "mockAccount.dkr.ecr.mockRegion.amazonaws.com"
+			creds, err := mockHelper.GetCredentials([]string{url})
+			So(err, ShouldBeNil)
+			So(creds, ShouldNotBeNil)
+			So(creds[url].Username, ShouldEqual, "mockUsername")
+			So(creds[url].Password, ShouldEqual, "mockPassword")
+		})
+
+		Convey("Test Invalid Credentials Retrieval", func() {
+			url := "invalid.dkr.ecr.mockRegion.amazonaws.com"
+			_, err := mockHelper.GetCredentials([]string{url})
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "mock error for remote address")
+		})
+
+		Convey("Test Credentials Validity Check", func() {
+			validURL := "mockAccount.dkr.ecr.mockRegion.amazonaws.com"
+			mockHelper.GetECRCredentials(validURL) // Prepopulate credentials
+			So(mockHelper.IsCredentialsValid(validURL), ShouldBeTrue)
+
+			// Simulate expiry by manipulating the expiry time
+			mockHelper.credentials[validURL] = ECRCredential{
+				username: "mockUsername",
+				password: "mockPassword",
+				expiry:   time.Now().Add(-1 * time.Hour), // Set to expired
+				account:  "mockAccount",
+				region:   "mockRegion",
+			}
+
+			So(mockHelper.IsCredentialsValid(validURL), ShouldBeFalse)
+		})
+
+		Convey("Test Credentials Refresh", func() {
+			url := "mockAccount.dkr.ecr.mockRegion.amazonaws.com"
+			_, err := mockHelper.RefreshCredentials(url)
+			So(err, ShouldBeNil)
+
+			// Check that the new credentials are valid
+			So(mockHelper.IsCredentialsValid(url), ShouldBeTrue)
+		})
 	})
 }

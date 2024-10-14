@@ -28,7 +28,7 @@ import (
 
 type BaseService struct {
 	config           syncconf.RegistryConfig
-	credentials      syncconf.Credentials
+	credentials      syncconf.CredentialsFile
 	credentialHelper CredentialHelper
 	clusterConfig    *config.ClusterConfig
 	remote           Remote
@@ -61,7 +61,6 @@ func New(
 	var err error
 
 	var credentialsFile syncconf.CredentialsFile
-
 	if service.config.CredentialHelper == "" {
 		// Only load credentials from file if CredentialHelper is not set
 		if credentialsFilepath != "" {
@@ -72,7 +71,7 @@ func New(
 					Err(err).Msg("couldn't get registry credentials from configured path")
 			}
 			service.credentialHelper = nil
-			service.credentialsFile = credentialsFile
+			service.credentials = credentialsFile
 		}
 	} else {
 		log.Info().Msgf("Using credentials helper, because CredentialHelper is set to %s", service.config.CredentialHelper)
@@ -87,7 +86,7 @@ func New(
 			}
 			service.credentials = creds
 		default:
-			log.Warn().Msgf("Unsupported CredentialHelper: %s", registryConfig.CredentialHelper)
+			log.Warn().Msgf("Unsupported CredentialHelper: %s", service.config.CredentialHelper)
 		}
 	}
 
@@ -146,9 +145,45 @@ func New(
 	return service, nil
 }
 
+// refreshRegistryTemporaryCredentials refreshes the temporary credentials for the registry if necessary.
+// It checks whether a CredentialHelper is configured and if the current credentials have expired.
+// If the credentials are expired, it attempts to refresh them and updates the service configuration.
+func (service *BaseService) refreshRegistryTemporaryCredentials() error {
+
+	// Strip the transport protocol (e.g., https:// or http://) from the remote address.
+	remoteAddress := StripRegistryTransport(service.client.GetHostname())
+
+	// If a CredentialHelper is configured, proceed to refresh the credentials if they are invalid or expired.
+	if service.config.CredentialHelper != "" {
+		if !service.credentialHelper.isCredentialsValid(remoteAddress) {
+			// Attempt to refresh the credentials using the CredentialHelper.
+			credentials, err := service.credentialHelper.refreshCredentials(remoteAddress)
+			if err != nil {
+				service.log.Error().
+					Err(err).
+					Str("url", remoteAddress).
+					Msg("Failed to refresh the credentials")
+				return err
+			}
+			service.log.Info().
+				Str("url", remoteAddress).
+				Msg("Refreshing the upstream remote registry credentials")
+
+			// Update the service's credentials map with the new set of credentials.
+			service.credentials[remoteAddress] = credentials
+
+			// Set the upstream authentication context using the refreshed credentials.
+			service.remote.setUpstreamAuthConfig(credentials.Username, credentials.Password)
+		}
+	}
+
+	// Return nil to indicate the operation completed successfully.
+	return nil
+}
+
 func (service *BaseService) SetNextAvailableClient() error {
 	if service.client != nil && service.client.Ping() {
-		return nil
+		return service.refreshRegistryTemporaryCredentials()
 	}
 
 	found := false
@@ -160,22 +195,13 @@ func (service *BaseService) SetNextAvailableClient() error {
 		}
 
 		remoteAddress := StripRegistryTransport(url)
-		// If a CredentialHelper is configured, refresh the credentials if they have expired.
-		// Otherwise, use the existing credentials for the given remote address.
-		var credentials syncconf.Credentials
-
-		if service.config.CredentialHelper {
-			if !service.credentialHelper.isCredentialsValid(url) {
-				credentials := service.credentialHelper.refreshCredentials(url)
-			}
-		} else {
-			credentials := service.credentials[remoteAddress]
-		}
+		credentials := service.credentials[remoteAddress]
 
 		tlsVerify := true
 		if service.config.TLSVerify != nil {
 			tlsVerify = *service.config.TLSVerify
 		}
+
 		options := client.Config{
 			URL:       url,
 			Username:  credentials.Username,
@@ -211,7 +237,6 @@ func (service *BaseService) SetNextAvailableClient() error {
 
 	return nil
 }
-
 func (service *BaseService) GetRetryOptions() *retry.Options {
 	return service.retryOptions
 }

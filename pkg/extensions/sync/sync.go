@@ -85,6 +85,9 @@ type Remote interface {
 	// In the case of public dockerhub images 'library' namespace is added to the repo names of images
 	// eg: alpine -> library/alpine
 	GetDockerRemoteRepo(repo string) string
+	// setUpstreamAuthConfig sets the upstream credentials used when the credential helper is set.
+	// This method refreshes the authentication configuration with the provided username and password.
+	setUpstreamAuthConfig(username, password string)
 }
 
 // Local registry.
