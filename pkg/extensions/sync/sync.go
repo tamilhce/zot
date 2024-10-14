@@ -13,6 +13,7 @@ import (
 	"github.com/containers/image/v5/types"
 	"github.com/opencontainers/go-digest"
 
+	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/scheduler"
 )
@@ -46,6 +47,22 @@ type Registry interface {
 	GetImageReference(repo string, tag string) (types.ImageReference, error)
 	// Get local oci layout context, is used by functions in containers/image package
 	GetContext() *types.SystemContext
+}
+
+// The CredentialHelper interface should be implemented by registries that use temporary tokens.
+// This interface defines methods to:
+// - Check if the credentials for a registry are still valid.
+// - Retrieve credentials for the specified registry URLs.
+// - Refresh credentials for a given registry URL.
+type CredentialHelper interface {
+	// Validates whether the credentials for the specified registry URL have expired.
+	isCredentialsValid(url string) bool
+
+	// Retrieves credentials for the provided list of registry URLs.
+	getCredentials(urls []string) (syncconf.CredentialsFile, error)
+
+	// Refreshes credentials for the specified registry URL.
+	refreshCredentials(url string) (syncconf.Credentials, error)
 }
 
 /*
